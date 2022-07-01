@@ -1,7 +1,21 @@
 ---
-title: "R Notebook"
+title: "QGIS Drive link"
 output: html_notebook
 ---
+
+in the following scenario:
+
+- geotagged pictures present on local computer
+- same pictures also uploaded to google drive
+- import geotagged pictures in QGIS
+
+with the aim to:
+
+- create a qgis2web map that automatically has the link to the pictures
+
+This scripts does the magic, by finding the google drive link of the images and adding it to the shapefile
+
+For details on teh QGIS side see https://opengislab.com/blog/2020/8/23/mapping-and-viewing-geotagged-photos-in-qgis 
 
 ```{r}
 library(tidyverse)
@@ -9,17 +23,22 @@ library(googledrive)
 library(sf)
 library(progressr)
 library(fs)
+handlers("progress")
 ```
 
 ```{r}
+# List of folders where the pictures are in
+# doesn't support nested folders
 drive_folders <- list(
   'https://drive.google.com/drive/u/3/folders/1X1W3CVnSxvTgw5dS3QIst-r1qsovCKv4',
   'https://drive.google.com/drive/u/3/folders/1vWHIDwTZmmDmOMCBtH1E5wGXsZx0gAIR',
   'https://drive.google.com/drive/u/3/folders/1mOMOrgI1blZ-cKfhUMDIroXkh0tJweCb'
   )
 
+# shapefile obtained by using the QGIS tool `import geotagged pictures`
 picture_shapefile <- "/home/simone/Documents/uni/botanical excursion/layer_geotagged_pictures.gpkg"
-html_template <- "<img src='{img_url}' width=350 height=250 >"
+# The html template used in the picture, probably no need the change it
+html_template <- "<img src='{img_url}' width=100% >"
 ```
 
 ```{r}
@@ -29,28 +48,6 @@ folder_query <- drive_folders %>%
   paste(collapse = " or ")
 ```
 
-
-```{r}
-folder_id <- as_id("https://drive.google.com/drive/u/3/folders/1X1W3CVnSxvTgw5dS3QIst-r1qsovCKv4")
-folder_q <- str_glue("'{folder_id}' in parents")
-```
-
-
-```{r}
-img <- drive_ls(dir_id, q = "name contains 'IMG_0019'", type = drive_mime_type("jpeg")) 
-```
-```{r}
-img$drive_resource[[1]]$webContentLink
-```
-
-<img src="https://drive.google.com/uc?id=1eXZ7T_PlNrpFzrlaSs4P9bLQPZy4_tQG&export=download"> 
-
-```{r}
-pictures_layer <- st_read(picture_shapefile)
-```
-```{r}
-
-```
 
 
 
@@ -65,7 +62,7 @@ get_image_url <- function(img_name) {
   
   if (nrow(img) == 0) {
     rlang::inform(str_glue("{img_name} not found on google drive"))
-    NULL
+    ""
   }
   else{
     if (nrow(img) > 1) {
@@ -76,54 +73,27 @@ get_image_url <- function(img_name) {
   
 }
 
-get_images_html <- function(img_names) {
+get_images_url <- function(img_names){
   p <- progressor(along = img_names)
   img_names %>%
     map_chr(\(img_name) {
       p(message = img_name)
-      img_url <- get_image_url(img_name)
-      ifelse(is.null(img_url), "", str_glue(html_template))
+      get_image_url(img_name)
+    })  
+}
+
+get_images_html <- function(imgs_url) {
+  imgs_url %>%
+    map_chr(\(img_url) {
+      ifelse(img_url == "", "", str_glue(html_template))
     })
 }
-```
-
-```{r}
-get_images_html("20220603_153702")
-```
-```{r}
-get_images_html("IMG_7758")
-```
-
-```{r}
-get_image_url()
-```
-```{r}
-img_name <- "IMG_7758"
-drive_ls(drive_folder,
-             q = str_glue("name contains '{img_name}'"),
-             type = drive_mime_type("jpeg"))
-```
-```{r}
-drive_find(type = drive_mime_type("jpeg"), q = folder_query,  q = str_glue("name contains '{img_name}'"))
-```
-
-
-```{r}
-as_id(drive_folder)
-```
-
-
-```{r}
-get_image_html("IMG")
-```
-```{r}
-handlers("rstudio")
 ```
 
 
 ```{r}
 pictures_html <- pictures_layer %>% 
-  mutate(html = get_images_html(filename) )
+  mutate(url = get_images_url(filename), html = get_images_html(url)  )
 ```
 
 ```{r}
@@ -133,6 +103,6 @@ pictures_html
 
 
 ```{r}
-st_write(pictures_html, paste0(path_ext_remove(picture_shapefile), "_html.", path_ext(picture_shapefile)))
+st_write(pictures_html, paste0(path_ext_remove(picture_shapefile), "_html.", path_ext(picture_shapefile)), append=FALSE)
 ```
 
