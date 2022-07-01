@@ -1,0 +1,138 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(googledrive)
+library(sf)
+library(progressr)
+library(fs)
+```
+
+```{r}
+drive_folders <- list(
+  'https://drive.google.com/drive/u/3/folders/1X1W3CVnSxvTgw5dS3QIst-r1qsovCKv4',
+  'https://drive.google.com/drive/u/3/folders/1vWHIDwTZmmDmOMCBtH1E5wGXsZx0gAIR',
+  'https://drive.google.com/drive/u/3/folders/1mOMOrgI1blZ-cKfhUMDIroXkh0tJweCb'
+  )
+
+picture_shapefile <- "/home/simone/Documents/uni/botanical excursion/layer_geotagged_pictures.gpkg"
+html_template <- "<img src='{img_url}' width=350 height=250 >"
+```
+
+```{r}
+folder_query <- drive_folders %>% 
+  map_chr(as_id) %>% 
+  map_chr(~str_glue("'{.x}' in parents")) %>% 
+  paste(collapse = " or ")
+```
+
+
+```{r}
+folder_id <- as_id("https://drive.google.com/drive/u/3/folders/1X1W3CVnSxvTgw5dS3QIst-r1qsovCKv4")
+folder_q <- str_glue("'{folder_id}' in parents")
+```
+
+
+```{r}
+img <- drive_ls(dir_id, q = "name contains 'IMG_0019'", type = drive_mime_type("jpeg")) 
+```
+```{r}
+img$drive_resource[[1]]$webContentLink
+```
+
+<img src="https://drive.google.com/uc?id=1eXZ7T_PlNrpFzrlaSs4P9bLQPZy4_tQG&export=download"> 
+
+```{r}
+pictures_layer <- st_read(picture_shapefile)
+```
+```{r}
+
+```
+
+
+
+```{r}
+get_image_url <- function(img_name) {
+  img <-
+    drive_find(
+      type = drive_mime_type("jpeg"),
+      q = folder_query,
+      q = str_glue("name contains '{img_name}'")
+    )
+  
+  if (nrow(img) == 0) {
+    rlang::inform(str_glue("{img_name} not found on google drive"))
+    NULL
+  }
+  else{
+    if (nrow(img) > 1) {
+      rlang::inform(str_glue("{img_name} matches multiple images. Returning first"))
+    }
+    img$drive_resource[[1]]$webContentLink
+  }
+  
+}
+
+get_images_html <- function(img_names) {
+  p <- progressor(along = img_names)
+  img_names %>%
+    map_chr(\(img_name) {
+      p(message = img_name)
+      img_url <- get_image_url(img_name)
+      ifelse(is.null(img_url), "", str_glue(html_template))
+    })
+}
+```
+
+```{r}
+get_images_html("20220603_153702")
+```
+```{r}
+get_images_html("IMG_7758")
+```
+
+```{r}
+get_image_url()
+```
+```{r}
+img_name <- "IMG_7758"
+drive_ls(drive_folder,
+             q = str_glue("name contains '{img_name}'"),
+             type = drive_mime_type("jpeg"))
+```
+```{r}
+drive_find(type = drive_mime_type("jpeg"), q = folder_query,  q = str_glue("name contains '{img_name}'"))
+```
+
+
+```{r}
+as_id(drive_folder)
+```
+
+
+```{r}
+get_image_html("IMG")
+```
+```{r}
+handlers("rstudio")
+```
+
+
+```{r}
+pictures_html <- pictures_layer %>% 
+  mutate(html = get_images_html(filename) )
+```
+
+```{r}
+pictures_html
+```
+
+
+
+```{r}
+st_write(pictures_html, paste0(path_ext_remove(picture_shapefile), "_html.", path_ext(picture_shapefile)))
+```
+
